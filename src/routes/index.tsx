@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useRef, useState } from "react";
+
+import logo from "@/assets/blohsh-logo.png";
+import { chat, createVideo, generateImage, pollVideo, type Attachment } from "@/lib/ai.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -8,12 +12,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Workspace Blohsh AI: converse com o assistente, gere imagens no Image Studio e entenda a arquitetura do modelo.",
+          "Workspace Blohsh AI: converse com o assistente, anexe arquivos, gere imagens e vídeos em um só lugar.",
       },
       { property: "og:title", content: "Blohsh AI — Workspace" },
       {
         property: "og:description",
-        content: "Assistente, Image Studio e arquitetura em preto profundo e verde neon.",
+        content: "Assistente, imagens, vídeos e arquitetura em preto profundo e verde neon.",
       },
     ],
   }),
@@ -21,13 +25,27 @@ export const Route = createFileRoute("/")({
 });
 
 type Panel = "chat" | "studio" | "architecture";
-type Message = { role: "user" | "assistant"; content: string };
+type Mode = "chat" | "image" | "video";
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  image?: string;
+  video?: string;
+  files?: { name: string; mime: string }[];
+  error?: boolean;
+};
 
 const TITLES: Record<Panel, string> = {
   chat: "Bom te ver por aqui.",
   studio: "Image Studio.",
   architecture: "Arquitetura da IA.",
 };
+
+const MODES: { id: Mode; label: string; icon: string; hint: string }[] = [
+  { id: "chat", label: "Conversa", icon: "◈", hint: "Pergunte qualquer coisa..." },
+  { id: "image", label: "Imagem", icon: "✦", hint: "Descreva a imagem que quer criar..." },
+  { id: "video", label: "Vídeo", icon: "▶", hint: "Descreva a cena do vídeo..." },
+];
 
 const SUGGESTIONS = [
   { n: "01", label: "Estratégia de produto", prompt: "Crie um plano estratégico para lançar meu produto." },
@@ -50,38 +68,124 @@ const NAV: { id: Panel; icon: string; label: string; tag?: string }[] = [
   { id: "architecture", icon: "⌘", label: "Arquitetura" },
 ];
 
+function readFile(file: File): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Não consegui ler o arquivo."));
+    reader.onload = () => {
+      const result = String(reader.result);
+      resolve({
+        name: file.name,
+        mime: file.type || "application/octet-stream",
+        data: result.slice(result.indexOf(",") + 1),
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function Index() {
   const [panel, setPanel] = useState<Panel>("chat");
+  const [mode, setMode] = useState<Mode>("chat");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [pending, setPending] = useState(false);
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [pending, setPending] = useState("");
   const [imagePrompt, setImagePrompt] = useState("");
-  const [imageState, setImageState] = useState<"idle" | "loading">("idle");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [studioImage, setStudioImage] = useState<string | null>(null);
+  const [studioState, setStudioState] = useState<"idle" | "loading">("idle");
+  const [studioError, setStudioError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  function send(value: string) {
+  const askChat = useServerFn(chat);
+  const askImage = useServerFn(generateImage);
+  const askVideo = useServerFn(createVideo);
+  const checkVideo = useServerFn(pollVideo);
+
+  const busy = pending !== "";
+
+  async function send(value: string) {
     const prompt = value.trim();
-    if (!prompt || pending) return;
-    setMessages((m) => [...m, { role: "user", content: prompt }]);
+    if ((!prompt && files.length === 0) || busy) return;
+    const attachments = files;
+    const userMessage: Message = {
+      role: "user",
+      content: prompt,
+      files: attachments.map((f) => ({ name: f.name, mime: f.mime })),
+    };
+    const history = [...messages, userMessage];
+    setMessages(history);
     setInput("");
-    setPending(true);
-    window.setTimeout(() => {
+    setFiles([]);
+
+    try {
+      if (mode === "image") {
+        setPending("Gerando sua imagem...");
+        const { image } = await askImage({ data: { prompt } });
+        setMessages((m) => [...m, { role: "assistant", content: "Imagem criada.", image }]);
+      } else if (mode === "video") {
+        setPending("Criando o vídeo (pode levar alguns minutos)...");
+        const job = await askVideo({ data: { prompt } });
+        let video: string | null = null;
+        for (let i = 0; i < 60 && !video; i++) {
+          await new Promise((r) => setTimeout(r, 6000));
+          const status = await checkVideo({ data: { id: job.id } });
+          if (status.video) video = status.video;
+          else setPending(`Renderizando o vídeo... ${status.progress ?? 0}%`);
+        }
+        if (!video) throw new Error("O vídeo demorou demais para ficar pronto.");
+        setMessages((m) => [...m, { role: "assistant", content: "Vídeo pronto.", video }]);
+      } else {
+        setPending("...");
+        const { text } = await askChat({
+          data: {
+            turns: history.map((m, i) => ({
+              role: m.role,
+              content: m.content,
+              attachments: i === history.length - 1 ? attachments : undefined,
+            })),
+          },
+        });
+        setMessages((m) => [...m, { role: "assistant", content: text }]);
+      }
+    } catch (err) {
       setMessages((m) => [
         ...m,
-        {
-          role: "assistant",
-          content:
-            "Esta é a interface do Blohsh AI. O modelo de linguagem ainda não está conectado — peça a conexão para receber respostas reais aqui.",
-        },
+        { role: "assistant", content: err instanceof Error ? err.message : "Algo deu errado.", error: true },
       ]);
-      setPending(false);
-    }, 700);
+    } finally {
+      setPending("");
+    }
+  }
+
+  async function onPickFiles(list: FileList | null) {
+    if (!list?.length) return;
+    const read = await Promise.all(Array.from(list).slice(0, 4).map(readFile));
+    setFiles((f) => [...f, ...read].slice(0, 4));
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function runStudio(prompt: string) {
+    if (!prompt.trim() || studioState === "loading") return;
+    setStudioState("loading");
+    setStudioError(null);
+    try {
+      const { image } = await askImage({ data: { prompt } });
+      setStudioImage(image);
+    } catch (err) {
+      setStudioError(err instanceof Error ? err.message : "Não consegui gerar a imagem.");
+    } finally {
+      setStudioState("idle");
+    }
   }
 
   function clearChat() {
     setMessages([]);
     setInput("");
+    setFiles([]);
   }
+
+  const activeMode = MODES.find((m) => m.id === mode)!;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -93,9 +197,13 @@ function Index() {
         {/* Sidebar */}
         <aside className="flex w-16 flex-col border-r border-border bg-sidebar-bg px-2 py-6 md:w-[258px] md:px-4">
           <a href="/" className="flex items-center gap-2.5 px-2 pb-7 text-base font-bold tracking-[0.11em]">
-            <span className="grid size-7 shrink-0 place-items-center rounded-[50%_50%_46%_54%] bg-primary font-mono font-bold text-primary-foreground shadow-[0_0_25px] shadow-primary/45">
-              B
-            </span>
+            <img
+              src={logo}
+              alt="Logo Blohsh AI"
+              width={28}
+              height={28}
+              className="size-7 shrink-0 drop-shadow-[0_0_14px_var(--primary)]"
+            />
             <span className="hidden md:inline">
               BLOHSH <i className="not-italic text-primary">AI</i>
             </span>
@@ -110,7 +218,6 @@ function Index() {
           >
             <span className="mr-0 text-lg md:mr-2">＋</span>
             <span className="hidden md:inline">Nova conversa</span>
-            <kbd className="float-right hidden pt-1 font-mono text-[10px] text-muted-foreground md:inline">⌘ K</kbd>
           </button>
 
           <nav aria-label="Navegação principal" className="mt-7 grid gap-1.5">
@@ -137,7 +244,7 @@ function Index() {
 
           <div className="mt-auto hidden border-t border-border px-2 pt-5 font-mono md:block">
             <p className="mb-2 text-[10px] tracking-[0.13em] text-muted-foreground">MODELO ATIVO</p>
-            <strong className="text-[11px] tracking-[0.1em]">DEEPSEEK</strong>
+            <strong className="text-[11px] tracking-[0.1em]">BLOHSH CORE</strong>
             <span className="mt-4 block text-[10px] text-muted-foreground">
               <b className="mr-1.5 inline-block size-1.5 rounded-full bg-primary shadow-[0_0_9px] shadow-primary" />
               Sistema online
@@ -170,10 +277,13 @@ function Index() {
             <div className="flex min-h-[calc(100vh-124px)] flex-1 flex-col">
               {messages.length === 0 ? (
                 <div className="my-auto -translate-y-4">
-                  <div className="relative mb-7 grid size-[42px] place-items-center rounded-full border border-primary/40">
-                    <span className="size-2.5 rounded-full bg-primary shadow-[0_0_22px] shadow-primary" />
-                    <span className="absolute h-px w-[59px] -rotate-[35deg] bg-primary" />
-                  </div>
+                  <img
+                    src={logo}
+                    alt=""
+                    width={44}
+                    height={44}
+                    className="mb-7 size-11 drop-shadow-[0_0_22px_var(--primary)]"
+                  />
                   <p className="mb-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground">
                     SEU ESPAÇO DE PENSAMENTO
                   </p>
@@ -186,7 +296,10 @@ function Index() {
                     {SUGGESTIONS.map((s) => (
                       <button
                         key={s.n}
-                        onClick={() => send(s.prompt)}
+                        onClick={() => {
+                          setMode("chat");
+                          send(s.prompt);
+                        }}
                         className="cursor-pointer border border-border bg-surface px-3.5 py-3 text-left text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
                       >
                         <span className="mr-2 font-mono text-[10px] text-primary">{s.n}</span>
@@ -198,7 +311,7 @@ function Index() {
               ) : (
                 <div aria-live="polite" className="mx-auto grid w-full max-w-[790px] gap-5 py-9">
                   {messages.map((m, i) => (
-                    <article key={i} className="grid grid-cols-[28px_1fr] gap-3 whitespace-pre-wrap text-sm leading-relaxed">
+                    <article key={i} className="grid grid-cols-[28px_1fr] gap-3 text-sm leading-relaxed">
                       <div
                         className={`grid size-7 place-items-center rounded-[2px] font-mono text-[11px] font-bold ${
                           m.role === "assistant" ? "bg-accent text-primary" : "bg-secondary text-foreground"
@@ -206,15 +319,44 @@ function Index() {
                       >
                         {m.role === "assistant" ? "B" : "VC"}
                       </div>
-                      <div className="py-1">{m.content}</div>
+                      <div className="py-1">
+                        {m.files?.length ? (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {m.files.map((f) => (
+                              <span
+                                key={f.name}
+                                className="border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground"
+                              >
+                                ⎙ {f.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <p className={`whitespace-pre-wrap ${m.error ? "text-destructive" : ""}`}>{m.content}</p>
+                        {m.image ? (
+                          <img
+                            src={m.image}
+                            alt="Imagem gerada pela Blohsh AI"
+                            loading="lazy"
+                            className="mt-3 w-full max-w-[430px] border border-border"
+                          />
+                        ) : null}
+                        {m.video ? (
+                          <video
+                            src={m.video}
+                            controls
+                            className="mt-3 w-full max-w-[520px] border border-border"
+                          />
+                        ) : null}
+                      </div>
                     </article>
                   ))}
-                  {pending && (
+                  {busy && (
                     <article className="grid grid-cols-[28px_1fr] gap-3">
                       <div className="grid size-7 place-items-center rounded-[2px] bg-accent font-mono text-[11px] font-bold text-primary">
                         B
                       </div>
-                      <div className="py-1 tracking-[3px] text-primary">···</div>
+                      <div className="py-1 text-sm text-primary">{pending}</div>
                     </article>
                   )}
                 </div>
@@ -227,8 +369,60 @@ function Index() {
                 }}
                 className="relative border-t border-border pt-4 pb-9"
               >
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  {MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setMode(m.id)}
+                      className={`cursor-pointer border px-3 py-2 text-[11px] font-medium transition-colors ${
+                        mode === m.id
+                          ? "border-primary/60 bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span className="mr-1.5">{m.icon}</span>
+                      {m.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="cursor-pointer border border-border px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                  >
+                    ⎙ Anexar arquivo
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => onPickFiles(e.target.files)}
+                  />
+                </div>
+
+                {files.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {files.map((f, i) => (
+                      <span
+                        key={`${f.name}-${i}`}
+                        className="flex items-center gap-2 border border-primary/40 px-2 py-1 font-mono text-[10px] text-primary"
+                      >
+                        {f.name}
+                        <button
+                          type="button"
+                          aria-label={`Remover ${f.name}`}
+                          onClick={() => setFiles((list) => list.filter((_, idx) => idx !== i))}
+                          className="cursor-pointer text-muted-foreground hover:text-destructive"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <textarea
-                  ref={textareaRef}
                   rows={1}
                   value={input}
                   onChange={(e) => {
@@ -243,18 +437,19 @@ function Index() {
                       send(input);
                     }
                   }}
-                  placeholder="Pergunte qualquer coisa..."
+                  placeholder={activeMode.hint}
                   className="max-h-[180px] min-h-16 w-full resize-none rounded-[2px] border border-border bg-surface py-5 pr-14 pl-4 text-sm outline-none transition-colors focus:border-primary/60"
                 />
                 <button
                   type="submit"
+                  disabled={busy}
                   aria-label="Enviar mensagem"
-                  className="absolute top-7 right-2.5 grid size-[37px] cursor-pointer place-items-center rounded-[2px] bg-primary text-xl text-primary-foreground"
+                  className="absolute right-2.5 bottom-[68px] grid size-[37px] cursor-pointer place-items-center rounded-[2px] bg-primary text-xl text-primary-foreground disabled:opacity-40"
                 >
                   ↑
                 </button>
                 <small className="block px-0.5 py-2 font-mono text-[9px] tracking-wide text-muted-foreground">
-                  DEEPSEEK · respostas podem conter imprecisões
+                  BLOHSH AI · texto, imagem e vídeo · respostas podem conter imprecisões
                 </small>
               </form>
             </div>
@@ -263,7 +458,7 @@ function Index() {
           {panel === "studio" && (
             <div className="flex flex-1 flex-col gap-9 py-[7.5vh]">
               <div className="max-w-[650px]">
-                <p className="mb-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground">OPENAI IMAGE API</p>
+                <p className="mb-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground">BLOHSH IMAGE</p>
                 <h2 className="text-[clamp(38px,5vw,72px)] font-medium leading-[0.96]">
                   Transforme ideias
                   <br />
@@ -277,9 +472,7 @@ function Index() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!imagePrompt.trim()) return;
-                  setImageState("loading");
-                  window.setTimeout(() => setImageState("idle"), 1200);
+                  runStudio(imagePrompt);
                 }}
                 className="grid w-full gap-3 border border-border bg-surface p-4 md:grid-cols-[1fr_auto]"
               >
@@ -295,17 +488,30 @@ function Index() {
                 />
                 <button
                   type="submit"
-                  className="h-11 cursor-pointer bg-primary px-6 text-[13px] font-semibold text-primary-foreground md:h-auto"
+                  disabled={studioState === "loading"}
+                  className="h-11 cursor-pointer bg-primary px-6 text-[13px] font-semibold text-primary-foreground disabled:opacity-50 md:h-auto"
                 >
                   Gerar imagem <span className="ml-2 text-lg">↗</span>
                 </button>
               </form>
 
-              <div className="grid min-h-[260px] place-items-center overflow-hidden border border-dashed border-border">
-                <div className="text-center text-[13px] text-muted-foreground">
-                  <span className="text-[29px] text-primary/70">✦</span>
-                  <p>{imageState === "loading" ? "Gerando sua imagem..." : "Sua criação aparecerá aqui."}</p>
-                </div>
+              <div className="grid min-h-[260px] place-items-center overflow-hidden border border-dashed border-border p-4">
+                {studioImage && studioState === "idle" ? (
+                  <img
+                    src={studioImage}
+                    alt={imagePrompt || "Imagem gerada"}
+                    loading="lazy"
+                    className="max-h-[520px] w-auto"
+                  />
+                ) : (
+                  <div className="text-center text-[13px] text-muted-foreground">
+                    <span className="text-[29px] text-primary/70">✦</span>
+                    <p className={studioError ? "text-destructive" : ""}>
+                      {studioError ??
+                        (studioState === "loading" ? "Gerando sua imagem..." : "Sua criação aparecerá aqui.")}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -322,8 +528,8 @@ function Index() {
                   <i className="not-italic text-primary">resposta.</i>
                 </h2>
                 <p className="mt-5 max-w-[570px] leading-[1.65] text-muted-foreground">
-                  O Blohsh conecta sua conversa a um modelo hospedado no DeepSeek. Estas são as camadas que tornam a
-                  geração de linguagem possível.
+                  A Blohsh conecta sua conversa a modelos de linguagem, imagem e vídeo. Estas são as camadas que
+                  tornam a geração possível.
                 </p>
               </div>
 
