@@ -12,7 +12,7 @@ export type Attachment = {
 export type ChatTurn = {
   role: "user" | "assistant";
   content: string;
-  attachments?: Attachment[];
+  attachments?: Attachment[] | undefined;
 };
 
 function key() {
