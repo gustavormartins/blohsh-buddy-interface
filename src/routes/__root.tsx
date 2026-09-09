@@ -77,11 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Blohsh AI — Inteligência sem ruído" },
+      {
+        name: "description",
+        content:
+          "Interface Blohsh AI: assistente de chat, Image Studio e a arquitetura por trás da geração de linguagem.",
+      },
+      { name: "author", content: "Blohsh" },
+      { property: "og:title", content: "Blohsh AI — Inteligência sem ruído" },
+      {
+        property: "og:description",
+        content: "Assistente, Image Studio e arquitetura em preto profundo e verde neon.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
