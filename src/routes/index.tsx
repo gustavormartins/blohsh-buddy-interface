@@ -343,20 +343,32 @@ function Index() {
                       >
                         {m.role === "assistant" ? "B" : "VC"}
                       </div>
-                      <div className="py-1">
+                      <div className="min-w-0 py-1">
                         {m.files?.length ? (
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            {m.files.map((f) => (
-                              <span
-                                key={f.name}
-                                className="border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground"
-                              >
-                                ⎙ {f.name}
-                              </span>
-                            ))}
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            {m.files.map((f) =>
+                              f.preview ? (
+                                <img
+                                  key={f.name}
+                                  src={f.preview}
+                                  alt={f.name}
+                                  loading="lazy"
+                                  className="size-16 border border-border object-cover"
+                                />
+                              ) : (
+                                <span
+                                  key={f.name}
+                                  className="border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground"
+                                >
+                                  ⎙ {f.name}
+                                </span>
+                              ),
+                            )}
                           </div>
                         ) : null}
-                        <p className={`whitespace-pre-wrap ${m.error ? "text-destructive" : ""}`}>{m.content}</p>
+                        {m.content ? (
+                          <FormattedText text={m.content} {...(m.error ? ({ tone: "error" } as const) : {})} />
+                        ) : null}
                         {m.image ? (
                           <img
                             src={m.image}
