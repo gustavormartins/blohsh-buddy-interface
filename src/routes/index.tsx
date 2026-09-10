@@ -465,33 +465,35 @@ function Index() {
                   </div>
                 )}
 
-                <textarea
-                  rows={1}
-                  value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    const el = e.target;
-                    el.style.height = "auto";
-                    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      send(input);
-                    }
-                  }}
-                  onPaste={onPaste}
-                  placeholder={`${activeMode.hint} (cole imagens com Ctrl+V)`}
-                  className="max-h-[180px] min-h-16 w-full resize-none rounded-[2px] border border-border bg-surface py-5 pr-14 pl-4 text-sm outline-none transition-colors focus:border-primary/60"
-                />
-                <button
-                  type="submit"
-                  disabled={busy}
-                  aria-label="Enviar mensagem"
-                  className="absolute right-2.5 bottom-[68px] grid size-[37px] cursor-pointer place-items-center rounded-[2px] bg-primary text-xl text-primary-foreground disabled:opacity-40"
-                >
-                  ↑
-                </button>
+                <div className="relative">
+                  <textarea
+                    rows={1}
+                    value={input}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      const el = e.target;
+                      el.style.height = "auto";
+                      el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        send(input);
+                      }
+                    }}
+                    onPaste={onPaste}
+                    placeholder={`${activeMode.hint} (cole imagens com Ctrl+V)`}
+                    className="max-h-[180px] min-h-16 w-full resize-none rounded-[2px] border border-border bg-surface py-5 pr-14 pl-4 text-sm outline-none transition-colors focus:border-primary/60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    aria-label="Enviar mensagem"
+                    className="absolute right-2.5 top-1/2 grid size-[37px] -translate-y-1/2 cursor-pointer place-items-center rounded-[2px] bg-primary text-xl text-primary-foreground disabled:opacity-40"
+                  >
+                    ↑
+                  </button>
+                </div>
                 <small className="block px-0.5 py-2 font-mono text-[9px] tracking-wide text-muted-foreground">
                   BLOHSH AI · texto, imagem e vídeo · respostas podem conter imprecisões
                 </small>
