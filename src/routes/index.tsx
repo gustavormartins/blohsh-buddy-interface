@@ -163,11 +163,30 @@ function Index() {
     }
   }
 
-  async function onPickFiles(list: FileList | null) {
-    if (!list?.length) return;
-    const read = await Promise.all(Array.from(list).slice(0, 4).map(readFile));
+  async function onPickFiles(list: FileList | File[] | null) {
+    const items = list ? Array.from(list as ArrayLike<File>) : [];
+    if (items.length === 0) return;
+    const read = await Promise.all(items.slice(0, 4).map(readFile));
     setFiles((f) => [...f, ...read].slice(0, 4));
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  /** Aceita imagens coladas (Ctrl+V) direto no campo de mensagem. */
+  async function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (pasted.length === 0) return;
+    event.preventDefault();
+    const named = pasted.map((file) =>
+      file.name && file.name !== "image.png"
+        ? file
+        : new File([file], `colado-${Date.now()}.${(file.type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`, {
+            type: file.type,
+          }),
+    );
+    await onPickFiles(named);
   }
 
   async function runStudio(prompt: string) {
