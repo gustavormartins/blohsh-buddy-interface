@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useRef, useState } from "react";
 
 import logo from "@/assets/blohsh-logo.png";
+import { FormattedText } from "@/components/formatted-text";
 import { chat, createVideo, generateImage, pollVideo, type Attachment } from "@/lib/ai.functions";
 
 export const Route = createFileRoute("/")({
@@ -31,7 +32,7 @@ type Message = {
   content: string;
   image?: string;
   video?: string;
-  files?: { name: string; mime: string }[];
+  files?: { name: string; mime: string; preview?: string }[];
   error?: boolean;
 };
 
@@ -111,7 +112,11 @@ function Index() {
     const userMessage: Message = {
       role: "user",
       content: prompt,
-      files: attachments.map((f) => ({ name: f.name, mime: f.mime })),
+      files: attachments.map((f) => ({
+        name: f.name,
+        mime: f.mime,
+        ...(f.mime.startsWith("image/") ? { preview: `data:${f.mime};base64,${f.data}` } : {}),
+      })),
     };
     const history = [...messages, userMessage];
     setMessages(history);
