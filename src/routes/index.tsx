@@ -442,9 +442,16 @@ function Index() {
                     {files.map((f, i) => (
                       <span
                         key={`${f.name}-${i}`}
-                        className="flex items-center gap-2 border border-primary/40 px-2 py-1 font-mono text-[10px] text-primary"
+                        className="flex items-center gap-2 border border-primary/40 py-1 pr-2 pl-2 font-mono text-[10px] text-primary"
                       >
-                        {f.name}
+                        {f.mime.startsWith("image/") ? (
+                          <img
+                            src={`data:${f.mime};base64,${f.data}`}
+                            alt=""
+                            className="size-8 border border-border object-cover"
+                          />
+                        ) : null}
+                        <span className="max-w-[160px] truncate">{f.name}</span>
                         <button
                           type="button"
                           aria-label={`Remover ${f.name}`}
@@ -473,7 +480,8 @@ function Index() {
                       send(input);
                     }
                   }}
-                  placeholder={activeMode.hint}
+                  onPaste={onPaste}
+                  placeholder={`${activeMode.hint} (cole imagens com Ctrl+V)`}
                   className="max-h-[180px] min-h-16 w-full resize-none rounded-[2px] border border-border bg-surface py-5 pr-14 pl-4 text-sm outline-none transition-colors focus:border-primary/60"
                 />
                 <button
