@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useRef, useState } from "react";
 
 import logo from "@/assets/blohsh-logo.png";
+import { FormattedText } from "@/components/formatted-text";
 import { chat, createVideo, generateImage, pollVideo, type Attachment } from "@/lib/ai.functions";
 
 export const Route = createFileRoute("/")({
@@ -31,7 +32,7 @@ type Message = {
   content: string;
   image?: string;
   video?: string;
-  files?: { name: string; mime: string }[];
+  files?: { name: string; mime: string; preview?: string }[];
   error?: boolean;
 };
 
@@ -111,7 +112,11 @@ function Index() {
     const userMessage: Message = {
       role: "user",
       content: prompt,
-      files: attachments.map((f) => ({ name: f.name, mime: f.mime })),
+      files: attachments.map((f) => ({
+        name: f.name,
+        mime: f.mime,
+        ...(f.mime.startsWith("image/") ? { preview: `data:${f.mime};base64,${f.data}` } : {}),
+      })),
     };
     const history = [...messages, userMessage];
     setMessages(history);
@@ -158,11 +163,30 @@ function Index() {
     }
   }
 
-  async function onPickFiles(list: FileList | null) {
-    if (!list?.length) return;
-    const read = await Promise.all(Array.from(list).slice(0, 4).map(readFile));
+  async function onPickFiles(list: FileList | File[] | null) {
+    const items = list ? Array.from(list as ArrayLike<File>) : [];
+    if (items.length === 0) return;
+    const read = await Promise.all(items.slice(0, 4).map(readFile));
     setFiles((f) => [...f, ...read].slice(0, 4));
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  /** Aceita imagens coladas (Ctrl+V) direto no campo de mensagem. */
+  async function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (pasted.length === 0) return;
+    event.preventDefault();
+    const named = pasted.map((file) =>
+      file.name && file.name !== "image.png"
+        ? file
+        : new File([file], `colado-${Date.now()}.${(file.type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`, {
+            type: file.type,
+          }),
+    );
+    await onPickFiles(named);
   }
 
   async function runStudio(prompt: string) {
@@ -319,20 +343,32 @@ function Index() {
                       >
                         {m.role === "assistant" ? "B" : "VC"}
                       </div>
-                      <div className="py-1">
+                      <div className="min-w-0 py-1">
                         {m.files?.length ? (
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            {m.files.map((f) => (
-                              <span
-                                key={f.name}
-                                className="border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground"
-                              >
-                                ⎙ {f.name}
-                              </span>
-                            ))}
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            {m.files.map((f) =>
+                              f.preview ? (
+                                <img
+                                  key={f.name}
+                                  src={f.preview}
+                                  alt={f.name}
+                                  loading="lazy"
+                                  className="size-16 border border-border object-cover"
+                                />
+                              ) : (
+                                <span
+                                  key={f.name}
+                                  className="border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground"
+                                >
+                                  ⎙ {f.name}
+                                </span>
+                              ),
+                            )}
                           </div>
                         ) : null}
-                        <p className={`whitespace-pre-wrap ${m.error ? "text-destructive" : ""}`}>{m.content}</p>
+                        {m.content ? (
+                          <FormattedText text={m.content} {...(m.error ? ({ tone: "error" } as const) : {})} />
+                        ) : null}
                         {m.image ? (
                           <img
                             src={m.image}
@@ -406,9 +442,16 @@ function Index() {
                     {files.map((f, i) => (
                       <span
                         key={`${f.name}-${i}`}
-                        className="flex items-center gap-2 border border-primary/40 px-2 py-1 font-mono text-[10px] text-primary"
+                        className="flex items-center gap-2 border border-primary/40 py-1 pr-2 pl-2 font-mono text-[10px] text-primary"
                       >
-                        {f.name}
+                        {f.mime.startsWith("image/") ? (
+                          <img
+                            src={`data:${f.mime};base64,${f.data}`}
+                            alt=""
+                            className="size-8 border border-border object-cover"
+                          />
+                        ) : null}
+                        <span className="max-w-[160px] truncate">{f.name}</span>
                         <button
                           type="button"
                           aria-label={`Remover ${f.name}`}
@@ -437,7 +480,8 @@ function Index() {
                       send(input);
                     }
                   }}
-                  placeholder={activeMode.hint}
+                  onPaste={onPaste}
+                  placeholder={`${activeMode.hint} (cole imagens com Ctrl+V)`}
                   className="max-h-[180px] min-h-16 w-full resize-none rounded-[2px] border border-border bg-surface py-5 pr-14 pl-4 text-sm outline-none transition-colors focus:border-primary/60"
                 />
                 <button
