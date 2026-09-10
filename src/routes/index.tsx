@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useRef, useState } from "react";
 
-import logo from "@/assets/blohsh-logo.png";
+import { BlohshMark } from "@/components/blohsh-mark";
 import { FormattedText } from "@/components/formatted-text";
 import { chat, createVideo, generateImage, pollVideo, type Attachment } from "@/lib/ai.functions";
 
@@ -221,13 +221,7 @@ function Index() {
         {/* Sidebar */}
         <aside className="flex w-16 flex-col border-r border-border bg-sidebar-bg px-2 py-6 md:w-[258px] md:px-4">
           <a href="/" className="flex items-center gap-2.5 px-2 pb-7 text-base font-bold tracking-[0.11em]">
-            <img
-              src={logo}
-              alt="Logo Blohsh AI"
-              width={28}
-              height={28}
-              className="size-7 shrink-0 drop-shadow-[0_0_14px_var(--primary)]"
-            />
+            <BlohshMark className="size-8 shrink-0" title="Logo Blohsh AI" />
             <span className="hidden md:inline">
               BLOHSH <i className="not-italic text-primary">AI</i>
             </span>
@@ -280,7 +274,10 @@ function Index() {
         <section className="mx-auto flex w-[calc(100%-4rem)] max-w-[1440px] flex-col px-6 md:w-[calc(100%-258px)] md:px-[8.2vw]">
           <header className="flex h-[100px] items-center justify-between border-b border-border md:h-[124px]">
             <div>
-              <p className="mb-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground">BLOHSH / WORKSPACE</p>
+              <p className="mb-2 flex items-center gap-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-primary shadow-[0_0_10px_var(--primary)]" />
+                BLOHSH / WORKSPACE
+              </p>
               <h1 className="text-xl font-medium">{TITLES[panel]}</h1>
             </div>
             <div className="flex items-center gap-4">
@@ -300,14 +297,10 @@ function Index() {
           {panel === "chat" && (
             <div className="flex min-h-[calc(100vh-124px)] flex-1 flex-col">
               {messages.length === 0 ? (
-                <div className="my-auto -translate-y-4">
-                  <img
-                    src={logo}
-                    alt=""
-                    width={44}
-                    height={44}
-                    className="mb-7 size-11 drop-shadow-[0_0_22px_var(--primary)]"
-                  />
+                <div className="brand-hero my-auto -translate-y-4">
+                  <div className="brand-sigil mb-7">
+                    <BlohshMark className="relative z-10 h-16 w-14" />
+                  </div>
                   <p className="mb-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground">
                     SEU ESPAÇO DE PENSAMENTO
                   </p>
